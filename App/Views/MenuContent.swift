@@ -112,6 +112,24 @@ struct MenuContent: View {
                 }
             }
 
+            HStack(spacing: 8) {
+                Button {
+                    appState.startAirPlay()
+                } label: {
+                    HStack {
+                        Image(systemName: "airplay.video")
+                        Text("Stream via AirPlay")
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.selectedFile == nil || appState.isConnecting)
+
+                RoutePickerView(player: appState.airplay.player)
+                    .frame(width: 22, height: 22)
+            }
+
             if appState.isConnecting {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)

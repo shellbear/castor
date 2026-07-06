@@ -16,7 +16,13 @@ final class AppState {
         var isScrubbing = false
     }
 
+    private enum Backend {
+        case chromecast(CastClient)
+        case airplay
+    }
+
     let engineVersion = Castor.version
+    let airplay = AirPlayController()
 
     private(set) var devices: [CastDevice] = []
     private(set) var selectedFile: URL?
@@ -29,7 +35,7 @@ final class AppState {
     private var serverStarted = false
     private var discoveryTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
-    private var castClient: CastClient?
+    private var backend: Backend?
     private var hlsSession: HLSSession?
 
     init() {
@@ -56,11 +62,47 @@ final class AppState {
         }
     }
 
-    // MARK: - Casting
+    // MARK: - Session setup
 
     func cast(to device: CastDevice) {
         guard let file = selectedFile, !isConnecting else { return }
         Task { await startCast(file: file, device: device) }
+    }
+
+    func startAirPlay() {
+        guard let file = selectedFile, !isConnecting else { return }
+        Task { await startAirPlaySession(file: file) }
+    }
+
+    /// Probes the file, decides direct-play vs conversion, and returns the
+    /// URL + content type a receiver should load.
+    private func prepareMedia(
+        file: URL,
+        capabilities: DeviceCapabilities
+    ) async throws -> (url: URL, contentType: String, info: CastorEngine.MediaInfo)? {
+        guard let tools = FFTools.locate() else {
+            ffmpegMissing = true
+            return nil
+        }
+        if !serverStarted {
+            try await server.start()
+            serverStarted = true
+        }
+
+        let info = try await MediaProber(tools: tools).probe(file)
+        let plan = try Planner.plan(media: info, device: capabilities)
+
+        await stopSession()
+
+        if plan.isDirectPlay {
+            let url = try await server.share(file)
+            return (url, MIMEType.forPathExtension(file.pathExtension), info)
+        }
+        let session = try HLSSession(media: info, plan: plan, tools: tools)
+        try await session.start()
+        let url = try await server.register(session)
+        hlsSession = session
+        return (url, "application/vnd.apple.mpegurl", info)
     }
 
     private func startCast(file: URL, device: CastDevice) async {
@@ -68,55 +110,56 @@ final class AppState {
         errorMessage = nil
         defer { isConnecting = false }
 
-        guard let tools = FFTools.locate() else {
-            ffmpegMissing = true
-            return
-        }
-
         do {
-            if !serverStarted {
-                try await server.start()
-                serverStarted = true
+            guard let media = try await prepareMedia(file: file, capabilities: device.capabilities) else {
+                return
             }
-
-            let info = try await MediaProber(tools: tools).probe(file)
-            let plan = try Planner.plan(media: info, device: device.capabilities)
-
-            await stopSession()
-
-            let mediaURL: URL
-            let contentType: String
-            if plan.isDirectPlay {
-                mediaURL = try await server.share(file)
-                contentType = MIMEType.forPathExtension(file.pathExtension)
-            } else {
-                let session = try HLSSession(media: info, plan: plan, tools: tools)
-                try await session.start()
-                mediaURL = try await server.register(session)
-                contentType = "application/vnd.apple.mpegurl"
-                hlsSession = session
-            }
-
             let client = CastClient(device: device)
             try await client.connect()
 
             let title = file.deletingPathExtension().lastPathComponent
             try await client.load(
-                url: mediaURL,
-                contentType: contentType,
+                url: media.url,
+                contentType: media.contentType,
                 title: title,
-                duration: info.durationSeconds
+                duration: media.info.durationSeconds
             )
 
-            castClient = client
-            playback = Playback(deviceName: device.name, title: title, duration: info.durationSeconds)
-            startStatusUpdates(for: client)
+            backend = .chromecast(client)
+            playback = Playback(deviceName: device.name, title: title, duration: media.info.durationSeconds)
+            startCastStatusUpdates(for: client)
         } catch {
             errorMessage = "Cast failed: \(error.localizedDescription)"
         }
     }
 
-    private func startStatusUpdates(for client: CastClient) {
+    private func startAirPlaySession(file: URL) async {
+        isConnecting = true
+        errorMessage = nil
+        defer { isConnecting = false }
+
+        do {
+            guard let media = try await prepareMedia(file: file, capabilities: .appleTV) else {
+                return
+            }
+            airplay.load(url: media.url)
+            backend = .airplay
+            let title = file.deletingPathExtension().lastPathComponent
+            playback = Playback(
+                deviceName: "AirPlay",
+                title: title,
+                state: .paused,
+                duration: media.info.durationSeconds
+            )
+            startAirPlayStatusUpdates()
+        } catch {
+            errorMessage = "AirPlay failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Status updates
+
+    private func startCastStatusUpdates(for client: CastClient) {
         statusTask?.cancel()
         statusTask = Task { [weak self] in
             let pushTask = Task { [weak self] in
@@ -134,6 +177,23 @@ final class AppState {
         }
     }
 
+    private func startAirPlayStatusUpdates() {
+        statusTask?.cancel()
+        statusTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let snapshot = self.airplay.snapshot
+                if var playback = self.playback, !playback.isScrubbing {
+                    playback.state = snapshot.isPlaying ? .playing : .paused
+                    playback.position = snapshot.position
+                    playback.deviceName = snapshot.isExternal ? "AirPlay device" : "AirPlay — pick a device"
+                    self.playback = playback
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
     private func apply(_ snapshot: CastClient.PlaybackSnapshot) {
         guard var playback, !playback.isScrubbing else { return }
         playback.state = snapshot.state
@@ -147,24 +207,33 @@ final class AppState {
     // MARK: - Transport controls
 
     func togglePlayPause() {
-        guard let castClient, let playback else { return }
-        Task {
+        guard let backend, let playback else { return }
+        switch backend {
+        case .chromecast(let client):
+            Task {
+                if playback.state == .playing {
+                    try? await client.pause()
+                } else {
+                    try? await client.play()
+                }
+            }
+        case .airplay:
             if playback.state == .playing {
-                try? await castClient.pause()
+                airplay.pause()
             } else {
-                try? await castClient.play()
+                airplay.play()
             }
         }
     }
 
     func seek(to seconds: Double) {
-        guard let castClient else { return }
-        Task { try? await castClient.seek(to: seconds) }
-    }
-
-    func setVolume(_ level: Double) {
-        guard let castClient else { return }
-        Task { try? await castClient.setVolume(level) }
+        guard let backend else { return }
+        switch backend {
+        case .chromecast(let client):
+            Task { try? await client.seek(to: seconds) }
+        case .airplay:
+            airplay.seek(to: seconds)
+        }
     }
 
     func stopPlayback() {
@@ -174,11 +243,16 @@ final class AppState {
     private func stopSession() async {
         statusTask?.cancel()
         statusTask = nil
-        if let castClient {
-            try? await castClient.stop()
-            await castClient.disconnect()
+        switch backend {
+        case .chromecast(let client):
+            try? await client.stop()
+            await client.disconnect()
+        case .airplay:
+            airplay.stop()
+        case nil:
+            break
         }
-        castClient = nil
+        backend = nil
         playback = nil
         if let hlsSession {
             await server.unregister(sessionId: hlsSession.id)
