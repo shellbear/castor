@@ -9,6 +9,9 @@ struct CastorApp: App {
         MenuBarExtra("Castor", systemImage: "play.tv") {
             MenuContent()
                 .environment(appState)
+                .onOpenURL { url in
+                    appState.handle(url: url)
+                }
         }
         .menuBarExtraStyle(.window)
     }

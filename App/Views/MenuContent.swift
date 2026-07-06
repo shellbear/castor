@@ -14,7 +14,13 @@ struct MenuContent: View {
                 Divider()
             }
 
+            if appState.playback == nil, !appState.continueWatching.isEmpty {
+                continueWatchingSection
+                Divider()
+            }
+
             fileSection
+            subtitleSection
             Divider()
             deviceSection
 
@@ -30,6 +36,9 @@ struct MenuContent: View {
             }
 
             Divider()
+            settingsSection
+
+            Divider()
             Button("Quit Castor") {
                 NSApplication.shared.terminate(nil)
             }
@@ -37,6 +46,68 @@ struct MenuContent: View {
         }
         .padding(12)
         .frame(width: 320)
+    }
+
+    private var continueWatchingSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Continue Watching")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(appState.continueWatching) { entry in
+                Button {
+                    appState.resume(entry)
+                } label: {
+                    HStack {
+                        Image(systemName: "memories")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.title).lineLimit(1).truncationMode(.middle)
+                            ProgressView(value: entry.fractionWatched)
+                                .controlSize(.small)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var subtitleSection: some View {
+        @Bindable var appState = appState
+        let textTracks = (appState.selectedMediaInfo?.subtitles ?? []).filter(\.isTextBased)
+        if !textTracks.isEmpty {
+            Picker(selection: $appState.selectedSubtitleIndex) {
+                Text("None").tag(Int?.none)
+                ForEach(textTracks, id: \.index) { track in
+                    Text(subtitleLabel(track)).tag(Int?.some(track.index))
+                }
+            } label: {
+                Label("Subtitles", systemImage: "captions.bubble")
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+        }
+    }
+
+    private func subtitleLabel(_ track: SubtitleStream) -> String {
+        var parts: [String] = []
+        if let title = track.title {
+            parts.append(title)
+        } else if let language = track.language {
+            parts.append(language.uppercased())
+        } else {
+            parts.append("Track \(track.index)")
+        }
+        if track.isForced && track.title == nil { parts.append("(forced)") }
+        return parts.joined(separator: " ")
+    }
+
+    private var settingsSection: some View {
+        @Bindable var appState = appState
+        return Toggle("Always transcode (compatibility mode)", isOn: $appState.forceTranscode)
+            .font(.caption)
+            .toggleStyle(.checkbox)
     }
 
     private var header: some View {
