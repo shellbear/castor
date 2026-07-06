@@ -6,7 +6,7 @@ struct CastorApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        MenuBarExtra("Castor", systemImage: "play.tv") {
+        MenuBarExtra("Castor", image: "MenuIcon") {
             MenuContent()
                 .environment(appState)
                 .onOpenURL { url in

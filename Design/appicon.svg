@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3EC6F0"/>
+      <stop offset="1" stop-color="#0B5FCC"/>
+    </linearGradient>
+    <linearGradient id="frontWave" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E88E0"/>
+      <stop offset="1" stop-color="#0A55B8"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+  </defs>
+
+  <!-- macOS squircle background -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#water)"/>
+
+  <g clip-path="url(#squircle)">
+    <!-- beaver head -->
+    <g>
+      <!-- ears -->
+      <circle cx="322" cy="296" r="64" fill="#8C5A38"/>
+      <circle cx="322" cy="296" r="32" fill="#5F3A22"/>
+      <circle cx="702" cy="296" r="64" fill="#8C5A38"/>
+      <circle cx="702" cy="296" r="32" fill="#5F3A22"/>
+      <!-- head -->
+      <circle cx="512" cy="480" r="240" fill="#8C5A38"/>
+      <!-- muzzle -->
+      <ellipse cx="512" cy="580" rx="150" ry="110" fill="#C99B6B"/>
+      <!-- eyes -->
+      <circle cx="428" cy="436" r="28" fill="#2B1B10"/>
+      <circle cx="596" cy="436" r="28" fill="#2B1B10"/>
+      <circle cx="437" cy="427" r="9" fill="#FFFFFF"/>
+      <circle cx="605" cy="427" r="9" fill="#FFFFFF"/>
+      <!-- nose -->
+      <ellipse cx="512" cy="512" rx="46" ry="32" fill="#3A2415"/>
+      <!-- whiskers -->
+      <circle cx="412" cy="560" r="7" fill="#A87B4F"/>
+      <circle cx="396" cy="590" r="7" fill="#A87B4F"/>
+      <circle cx="612" cy="560" r="7" fill="#A87B4F"/>
+      <circle cx="628" cy="590" r="7" fill="#A87B4F"/>
+      <!-- teeth -->
+      <rect x="470" y="544" width="38" height="96" rx="11" fill="#FFFFFF"/>
+      <rect x="516" y="544" width="38" height="96" rx="11" fill="#FFFFFF"/>
+    </g>
+
+    <!-- foam crest -->
+    <path d="M100 664 Q169 624 238 664 T376 664 T514 664 T652 664 T790 664 T928 664 L928 924 L100 924 Z"
+          fill="#FFFFFF" opacity="0.9"/>
+    <!-- front wave: beaver peeking out of the stream -->
+    <path d="M100 680 Q169 640 238 680 T376 680 T514 680 T652 680 T790 680 T928 680 L928 924 L100 924 Z"
+          fill="url(#frontWave)"/>
+  </g>
+</svg>

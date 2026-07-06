@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Menu bar template icon: pure silhouette, holes carry the character.
+       Rendered with alpha only — macOS recolors it for light/dark menu bars. -->
+  <defs>
+    <mask id="holes">
+      <rect width="32" height="32" fill="white"/>
+      <!-- eyes -->
+      <circle cx="11.8" cy="14" r="2.1" fill="black"/>
+      <circle cx="20.2" cy="14" r="2.1" fill="black"/>
+      <!-- nose -->
+      <ellipse cx="16" cy="18" rx="2.6" ry="2" fill="black"/>
+      <!-- teeth: cut through the chin so the notch stays crisp at 16px -->
+      <rect x="12.6" y="20.8" width="3" height="8.5" rx="1.4" fill="black"/>
+      <rect x="16.4" y="20.8" width="3" height="8.5" rx="1.4" fill="black"/>
+    </mask>
+  </defs>
+  <g mask="url(#holes)">
+    <circle cx="9.5" cy="7.5" r="3.5" fill="black"/>
+    <circle cx="22.5" cy="7.5" r="3.5" fill="black"/>
+    <circle cx="16" cy="17" r="11" fill="black"/>
+  </g>
+</svg>
