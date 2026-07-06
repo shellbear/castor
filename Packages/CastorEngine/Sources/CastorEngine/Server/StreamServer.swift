@@ -15,6 +15,7 @@ public actor StreamServer {
     private var server: HTTPServer?
     private var runTask: Task<Void, Never>?
     private var files: [String: URL] = [:]
+    private var hlsSessions: [String: HLSSession] = [:]
     private let hostOverride: String?
 
     /// - Parameter hostOverride: host to advertise in share URLs instead of
@@ -80,6 +81,26 @@ public actor StreamServer {
         files.removeAll()
     }
 
+    // MARK: - HLS sessions
+
+    /// Registers a conversion session and returns its playlist URL.
+    public func register(_ session: HLSSession) throws -> URL {
+        guard let port = boundPort else { throw ServerError.notRunning }
+        guard let host = hostOverride ?? LocalNetwork.primaryIPv4Address() else {
+            throw ServerError.noLocalAddress
+        }
+        hlsSessions[session.id] = session
+        guard let url = URL(string: "http://\(host):\(port)/hls/\(session.id)/index.m3u8") else {
+            hlsSessions[session.id] = nil
+            throw ServerError.noLocalAddress
+        }
+        return url
+    }
+
+    public func unregister(sessionId: String) {
+        hlsSessions[sessionId] = nil
+    }
+
     // MARK: - Routes
 
     private func registerRoutes(on server: HTTPServer) async {
@@ -94,12 +115,46 @@ public actor StreamServer {
             guard let self else { return HTTPResponse(statusCode: .notFound) }
             return await self.fileResponse(for: request, headOnly: true)
         }
+        await server.appendRoute("GET /hls/:session/:file") { [weak self] request in
+            guard let self else { return HTTPResponse(statusCode: .notFound) }
+            return await self.hlsResponse(for: request)
+        }
+    }
+
+    private func hlsResponse(for request: HTTPRequest) async -> HTTPResponse {
+        guard let sessionId = request.routeParameters["session"],
+              let fileName = request.routeParameters["file"],
+              let session = hlsSessions[sessionId]
+        else {
+            return HTTPResponse(statusCode: .notFound, headers: Self.withCORS([:]))
+        }
+
+        do {
+            if fileName == "index.m3u8" {
+                var headers: HTTPHeaders = [
+                    .contentType: MIMEType.forPathExtension("m3u8"),
+                    .cacheControl: "no-cache",
+                ]
+                headers = Self.withCORS(headers)
+                let playlist = try await session.playlistData()
+                return HTTPResponse(statusCode: .ok, headers: headers, body: playlist)
+            }
+            let fileURL = try await session.fileURL(forRequested: fileName)
+            return serve(fileURL: fileURL, request: request, headOnly: false)
+        } catch {
+            return HTTPResponse(statusCode: .notFound, headers: Self.withCORS([:]))
+        }
     }
 
     private func fileResponse(for request: HTTPRequest, headOnly: Bool) -> HTTPResponse {
-        guard let token = request.routeParameters["token"],
-              let fileURL = files[token],
-              let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+        guard let token = request.routeParameters["token"], let fileURL = files[token] else {
+            return HTTPResponse(statusCode: .notFound, headers: Self.withCORS([:]))
+        }
+        return serve(fileURL: fileURL, request: request, headOnly: headOnly)
+    }
+
+    private func serve(fileURL: URL, request: HTTPRequest, headOnly: Bool) -> HTTPResponse {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
               let fileSize = attributes[.size] as? Int
         else {
             return HTTPResponse(statusCode: .notFound, headers: Self.withCORS([:]))

@@ -30,6 +30,7 @@ final class AppState {
     private var discoveryTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
     private var castClient: CastClient?
+    private var hlsSession: HLSSession?
 
     init() {
         discoveryTask = Task { [weak self] in
@@ -80,20 +81,29 @@ final class AppState {
 
             let info = try await MediaProber(tools: tools).probe(file)
             let plan = try Planner.plan(media: info, device: device.capabilities)
-            guard plan.isDirectPlay else {
-                errorMessage = "\(file.lastPathComponent) needs conversion for \(device.name) — coming in the next milestone."
-                return
-            }
 
             await stopSession()
-            let mediaURL = try await server.share(file)
+
+            let mediaURL: URL
+            let contentType: String
+            if plan.isDirectPlay {
+                mediaURL = try await server.share(file)
+                contentType = MIMEType.forPathExtension(file.pathExtension)
+            } else {
+                let session = try HLSSession(media: info, plan: plan, tools: tools)
+                try await session.start()
+                mediaURL = try await server.register(session)
+                contentType = "application/vnd.apple.mpegurl"
+                hlsSession = session
+            }
+
             let client = CastClient(device: device)
             try await client.connect()
 
             let title = file.deletingPathExtension().lastPathComponent
             try await client.load(
                 url: mediaURL,
-                contentType: MIMEType.forPathExtension(file.pathExtension),
+                contentType: contentType,
                 title: title,
                 duration: info.durationSeconds
             )
@@ -170,6 +180,11 @@ final class AppState {
         }
         castClient = nil
         playback = nil
+        if let hlsSession {
+            await server.unregister(sessionId: hlsSession.id)
+            await hlsSession.stop()
+        }
+        hlsSession = nil
         await server.unshareAll()
     }
 }
