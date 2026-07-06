@@ -1,0 +1,49 @@
+name: Castor
+options:
+  bundleIdPrefix: com.shellbear
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  CastorEngine:
+    path: Packages/CastorEngine
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: "NO"
+
+targets:
+  Castor:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: CastorEngine
+        product: CastorEngine
+    scheme: {}
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: Castor
+        CFBundleDisplayName: Castor
+        LSUIElement: true
+        LSMinimumSystemVersion: "14.0"
+        NSLocalNetworkUsageDescription: >-
+          Castor discovers Apple TVs, Chromecasts and Smart TVs on your local
+          network and streams video to them.
+        NSBonjourServices:
+          - _googlecast._tcp
+          - _airplay._tcp
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.shellbear.castor.url
+            CFBundleURLSchemes:
+              - castor
