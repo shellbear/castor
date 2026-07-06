@@ -14,12 +14,14 @@ let package = Package(
         .target(
             name: "CastorEngine",
             dependencies: [
-                .product(name: "FlyingFox", package: "FlyingFox")
+                .product(name: "FlyingFox", package: "FlyingFox"),
+                .product(name: "FlyingSocks", package: "FlyingFox"),
             ]
         ),
         .testTarget(
             name: "CastorEngineTests",
-            dependencies: ["CastorEngine"]
+            dependencies: ["CastorEngine"],
+            resources: [.copy("Fixtures")]
         ),
     ]
 )
